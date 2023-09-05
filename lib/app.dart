@@ -1,26 +1,22 @@
-import 'package:animated_theme_switcher/animated_theme_switcher.dart';
 import 'package:flutter/material.dart';
-import 'package:sql_lite_crud/pages/home_page.dart';
+import 'package:sql_lite_crud/bloc/theme_cubit/theme_cubit.dart';
+import 'package:sql_lite_crud/presentation/home_page.dart';
+
+final themeCubit = ThemeCubit();
 
 class MyApp extends StatelessWidget {
   const MyApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final isPlatformDark =
-        View.of(context).platformDispatcher.platformBrightness ==
-            Brightness.dark;
-    final initTheme = isPlatformDark
-        ? ThemeData.dark(useMaterial3: true)
-        : ThemeData.light(useMaterial3: true);
-    return ThemeProvider(
-      initTheme: initTheme,
-      builder: (_, myTheme) {
-        return MaterialApp(
-          theme: myTheme,
-          home: const HomePageController(),
-        );
-      },
-    );
+    return StreamBuilder<ThemeData>(
+        stream: themeCubit.stream,
+        initialData: themeCubit.state,
+        builder: (context, snapshot) {
+          return MaterialApp(
+            theme: snapshot.data,
+            home: const HomePage(),
+          );
+        });
   }
 }

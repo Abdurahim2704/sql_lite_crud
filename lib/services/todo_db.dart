@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/todo/todo.dart';
@@ -8,15 +8,13 @@ import '../models/todo/todo.dart';
 class TodoDB {
   String dbName;
   Database? _db;
-  List<Todo> todos = [];
-  final streamController = StreamController<List<Todo>>.broadcast();
-
   TodoDB({required this.dbName});
 
-  Future<List<Todo>> _fetchTodo() async {
+  Future<List<Todo>> fetchTodo() async {
     if (_db == null) {
       return [];
     }
+
     final data = await _db!.query("TODO",
         distinct: true,
         columns: [
@@ -34,20 +32,17 @@ class TodoDB {
     if (_db != null) {
       return true;
     }
-    final directory = await getApplicationDocumentsDirectory();
-    final path = "${directory.path}/$dbName";
+
+    final databasePath = await getDatabasesPath();
+    final path = join(databasePath, "TodoApp.db");
     _db = await openDatabase(path);
     const create = '''CREATE TABLE IF NOT EXISTS TODO (
-  ID INTEGER PRIMARY KEY,
+  ID INTEGER PRIMARY KEY AUTOINCREMENT,
   TASK TEXT NOT NULL,
   DEADLINE TEXT NOT NULL
 );''';
 
     await _db!.execute(create);
-    print("I am here");
-    todos = await _fetchTodo();
-    print("hello");
-    streamController.add(todos);
     return true;
   }
 
@@ -71,20 +66,14 @@ class TodoDB {
     return true;
   }
 
-  Stream<List<Todo>> all() =>
-      streamController.stream.map((event) => event..sort());
-
   Future<bool> create(String task, String deadline) async {
     if (_db == null) {
       return false;
     }
-    final int id = await _db!.insert("TODO", {
+    await _db!.insert("TODO", {
       "TASK": task,
       "DEADLINE": deadline,
     });
-    final todo = Todo(id: id, task: task, deadline: deadline);
-    todos.add(todo);
-    streamController.add(todos);
 
     return true;
   }
@@ -102,9 +91,6 @@ class TodoDB {
       where: "ID=?",
       whereArgs: [id],
     );
-    todos.removeWhere((element) => element.id == id);
-    todos.add(Todo(id: id, task: newTask, deadline: newDeadline));
-    streamController.add(todos);
     return true;
   }
 }

@@ -1,59 +1,16 @@
-import 'package:animated_theme_switcher/animated_theme_switcher.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:sql_lite_crud/app.dart';
+import 'package:sql_lite_crud/bloc/detail_cubit/detail_cubit.dart';
+import 'package:sql_lite_crud/bloc/home_cubit/home_cubit.dart';
+import 'package:sql_lite_crud/bloc/home_cubit/home_state.dart';
+import 'package:sql_lite_crud/main.dart';
 import 'package:sql_lite_crud/models/todo/todo.dart';
-import 'package:sql_lite_crud/pages/loading_page.dart';
-import 'package:sql_lite_crud/services/todo_db.dart';
-
-class HomePageController extends StatefulWidget {
-  const HomePageController({super.key});
-
-  @override
-  State<HomePageController> createState() => _HomePageControllerState();
-}
-
-class _HomePageControllerState extends State<HomePageController> {
-  List<Todo> todos = [];
-  TodoDB? db;
-
-  @override
-  void initState() {
-    db = TodoDB(dbName: "todo2.sqlite");
-    db!.open();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-    db!.close();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<List<Todo>>(
-      builder: (context, snapshot) {
-        switch (snapshot.connectionState) {
-          case ConnectionState.active:
-          case ConnectionState.waiting:
-            if (snapshot.data == null) {
-              return LoadingPage();
-            }
-            todos = snapshot.data!;
-            return HomePage(todos: todos, db: db!);
-          default:
-            return const LoadingPage();
-        }
-      },
-      stream: db!.all(),
-    );
-  }
-}
+import 'package:sql_lite_crud/presentation/widgets/change_theme_button.dart';
 
 class HomePage extends StatefulWidget {
-  final List<Todo> todos;
-  final TodoDB db;
-
-  const HomePage({super.key, required this.todos, required this.db});
+  const HomePage({super.key});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -61,63 +18,72 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   @override
+  void initState() {
+    homeCubit.fetchData();
+    super.initState();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    detailCubit.stream.listen((value) {
+      if (value is DetailCreateSuccess || value is DetailDeleteSuccess) {
+        homeCubit.fetchData();
+      }
+    });
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Todo App1"),
-        leading: ThemeSwitcher.withTheme(
-          builder: (_, switcher, theme) {
-            return IconButton(
-              splashRadius: 1,
-              onPressed: () => switcher.changeTheme(
-                theme: theme.brightness == Brightness.light
-                    ? ThemeData.dark(useMaterial3: true)
-                    : ThemeData.light(useMaterial3: true),
-              ),
-              icon: Icon(
-                Theme.of(context).brightness == Brightness.dark
-                    ? CupertinoIcons.moon_fill
-                    : CupertinoIcons.sun_max_fill,
-                size: 30,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white
-                    : Colors.yellow,
-              ),
-            );
-          },
+        title: const Text(
+          "Todo App",
+          style: TextStyle(fontWeight: FontWeight.w600),
         ),
+        leading: IconButton(
+            onPressed: () {
+              themeCubit.changeTheme();
+            },
+            icon: const ChangeThemeIcon()),
       ),
-      body: ListView.builder(
-        itemCount: widget.todos.length,
-        itemBuilder: (_, index) {
-          return ListTile(
-            title: Text(widget.todos[index].task),
-            subtitle: Text(widget.todos[index].deadline),
-            trailing: IconButton(
-              icon: Icon(CupertinoIcons.trash),
-              onPressed: () {
-                widget.db.delete(widget.todos[index]);
-                widget.todos.removeAt(index);
-                widget.db.streamController.add(widget.todos);
-              },
-            ),
-            onLongPress: (){
-              showUpdateDialog(widget.todos[index], context, widget.db);
+      body: BlocBuilder<HomeCubit, HomeState>(
+        bloc: homeCubit,
+        builder: (context, state) {
+          return ListView.builder(
+            itemCount: state.todos.length,
+            itemBuilder: (_, index) {
+              return ListTile(
+                title: Text(state.todos[index].task),
+                subtitle: Text(state.todos[index].deadline),
+                trailing: IconButton(
+                  icon: const Icon(CupertinoIcons.trash),
+                  onPressed: () {
+                    detailCubit.delete(state.todos[index]);
+                    state.todos.removeAt(index);
+                  },
+                ),
+                onLongPress: () {
+                  showUpdateDialog(state.todos[index], context);
+                },
+              );
             },
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: MaterialButton(
+        color: Colors.amber,
+        materialTapTargetSize: MaterialTapTargetSize.padded,
+        shape: const ContinuousRectangleBorder(
+            side:
+                BorderSide(color: Color.fromARGB(255, 237, 224, 48), width: 3)),
         onPressed: () {
-          showCreateDialog(context, widget.db);
+          showCreateDialog(context);
+          setState(() {});
         },
-        child: const Icon(CupertinoIcons.plus),
+        child: const SizedBox(
+            height: 60, width: 60, child: Icon(CupertinoIcons.plus)),
       ),
     );
   }
 }
 
-void showCreateDialog(BuildContext context, TodoDB db) {
+void showCreateDialog(BuildContext context) {
   final formKey = GlobalKey<FormState>();
 
   TextEditingController taskController = TextEditingController();
@@ -128,8 +94,11 @@ void showCreateDialog(BuildContext context, TodoDB db) {
       context: context,
       pageBuilder: (context, _, __) {
         return AlertDialog(
-          title: Text("Add Task", style: TextStyle(fontSize: 20),),
-          contentPadding: EdgeInsets.all(20),
+          title: const Text(
+            "Add Task",
+            style: TextStyle(fontSize: 20),
+          ),
+          contentPadding: const EdgeInsets.all(20),
           content: Form(
             key: formKey,
             child: Column(
@@ -164,7 +133,7 @@ void showCreateDialog(BuildContext context, TodoDB db) {
                 ElevatedButton.icon(
                     onPressed: () {
                       if (formKey.currentState!.validate()) {
-                        db.create(taskController.value.text,
+                        detailCubit.create(taskController.value.text,
                             deadlineController.value.text);
                         Navigator.pop(context);
                       }
@@ -178,19 +147,23 @@ void showCreateDialog(BuildContext context, TodoDB db) {
       });
 }
 
-void  showUpdateDialog(Todo todo, BuildContext context, TodoDB db) {
+void showUpdateDialog(Todo todo, BuildContext context) {
   final formKey = GlobalKey<FormState>();
 
   TextEditingController taskController = TextEditingController(text: todo.task);
-  TextEditingController deadlineController = TextEditingController(text: todo.deadline);
+  TextEditingController deadlineController =
+      TextEditingController(text: todo.deadline);
   showGeneralDialog(
       barrierDismissible: true,
       barrierLabel: "update",
       context: context,
       pageBuilder: (context, _, __) {
         return AlertDialog(
-          title: Text("Update The Task", style: TextStyle(fontSize: 20),),
-          contentPadding: EdgeInsets.all(20),
+          title: const Text(
+            "Update The Task",
+            style: TextStyle(fontSize: 20),
+          ),
+          contentPadding: const EdgeInsets.all(20),
           content: Form(
             key: formKey,
             child: Column(
@@ -230,7 +203,8 @@ void  showUpdateDialog(Todo todo, BuildContext context, TodoDB db) {
             ElevatedButton(
                 onPressed: () {
                   if (formKey.currentState!.validate()) {
-                    db.update(todo.id,taskController.value.text, deadlineController.value.text);
+                    detailCubit.edit(todo, taskController.value.text,
+                        deadlineController.value.text);
                     Navigator.pop(context);
                   }
                 },
